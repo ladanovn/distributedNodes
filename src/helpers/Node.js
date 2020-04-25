@@ -6,7 +6,7 @@ const {
     del,
 } = require('./redisPromisify');
 
-const FREQUENCY_SYNC = 1000;
+const FREQUENCY_SYNC = 250;
 const FREQUENCY_MESSAGE_PUBLISH = 500;
 const ONLINE_STATUS_EXPIRE = FREQUENCY_SYNC * 1.5;
 
@@ -47,58 +47,69 @@ class Node {
         this.publishLoop = setInterval(this._publishMsg.bind(this), FREQUENCY_MESSAGE_PUBLISH);
     }
 
+    /**
+     * Local and remote state synchronization
+     */
     async _syncLoop() {
-        console.log(this.id);
-        console.log(this.state);
         const now = Date.now();
 
-        // confirmation online status
+        // FIXME: remove after test
+        console.log(this.id, this.state);
+
+        // confirm online status
         await set(`node:${this.id}:timestamp`, now);
 
-        try {
-            const { disconnectedNodes } = await this._syncOnlineNodeState();
-            await this._handleDisconnectNode(disconnectedNodes);
-            await this._handleConnectNode();
-
-        } catch (err) {
-            console.log(err)
-        }
+        const { disconnectedNodes } = await this._syncOnlineNodeState();
+        await this._handleDisconnectNode(disconnectedNodes);
+        await this._handleConnectNode();
     }
 
+    /**
+     * Publish message if current node is generator
+     */
     async _publishMsg() {
         if (this.state.generator === this.id) {
-            // publish message
-            console.log(this.id, 'publish message');
+            // console.log(this.id, 'publish message');
         }
     }
 
+    /**
+     * If the current node is running,
+     * then new one can only become handler,
+     * if it still doesn't exist
+     */
     async _handleConnectNode() {
-        if (this.state.onlineNodes === 1) {
-            await set('generator', this.state.onlineNodes[0]);
-            await del('handler');
-
-        } else {
-            await del('generator');
-            await del('handler');
+        if (this.state.onlineNodes.length > 1) {  
+            if (!this.state.handler) {
+                const orderedNodes = [...this.state.onlineNodes].sort();
+                this.state.handler = orderedNodes[0];
+                await set('handler', orderedNodes[0]);
+            }
         }
     }
     
+    /**
+     * If the disconnectedNodes includes generator or
+     * handler, then necessary reselect them 
+     */
     async _handleDisconnectNode(disconnectedNodes) {
 
-        // Replacing a generator if current disconnected
+        // reselect generator if current disconnected
         if (disconnectedNodes.has(this.state.generator)) {
             const orderedNodes = [...this.state.onlineNodes].sort();
 
             if (orderedNodes.length > 1) {
                 for (const node of orderedNodes) {
-                    if (this.state.handler !== node) {
+                    if (this.state.handler !== node) 
+                        this.state.generator = node;{
                         await set('generator', node);
-                        this.state.generator = node;
                         break;
                     }
                 };
 
-            } else if (orderedNodes === 1) {
+            } else if (orderedNodes.length === 1) {
+                this.state.generator = orderedNodes[0];
+                this.state.handler = null;
                 await set('generator', orderedNodes[0]);
                 await del('handler');
 
@@ -108,24 +119,29 @@ class Node {
             }
         }
 
-        // Replacing a handler if current disconnected
+        // reselect handler if current disconnected
         if (disconnectedNodes.has(this.state.handler)) {
-            const orderedNodes = [...this.state.connectedNodes].sort();
-            for (const node of orderedNodes) {
-                if (this.state.generator !== node) {
-                    await set('handler', node);
-                    this.state.handler = node;
-                    break;
-                }
-            };
+            const orderedNodes = [...this.state.onlineNodes].sort();
+            if (orderedNodes.length > 1) {
+                for (const node of orderedNodes) {
+                    if (this.state.generator !== node) {
+                        await set('handler', node);
+                        this.state.handler = node;
+                        break;
+                    }
+                };
+            } else {
+                this.state.handler = null;
+                await del('handler');
+            }
         }
     }
 
     async _syncOnlineNodeState() {
         const now = Date.now();
-        const onlineNodes = await keys('node:*:timestamp');
         const onlineNodeIds = new Set();
 
+        const onlineNodes = await keys('node:*:timestamp');
         for (const node of onlineNodes) {
             const timestamp = await get(node);
 
@@ -154,6 +170,19 @@ class Node {
             this.state.onlineNodes.delete(node);
         });
 
+        const orderedNodes = [...this.state.onlineNodes].sort();
+        if (!this.state.generator) {
+            this.state.generator = orderedNodes[0];
+            await set('generator', orderedNodes[0]);
+        }
+
+        if (!this.state.handler) {
+            if (orderedNodes.length > 1) {
+                this.state.handler = orderedNodes[1];
+                await set('handler', orderedNodes[1]);
+            }
+        }
+
         return {
             connectedNodes,
             disconnectedNodes,
@@ -164,11 +193,24 @@ class Node {
         const now = Date.now();
         await set(`node:${this.id}:timestamp`, now);
 
-        this.state.generator = await get('generator');
-        this.state.handler = await get('handler');
-
         const onlineNodes = await keys('node:*:timestamp');
+        const generator = await get('generator');
+        const handler = await get('handler');
+
         const onlineNodeIds = onlineNodes.map(node => node.split(':')[1]);
+
+        if (!onlineNodeIds.includes(generator)) {
+            await del('generator');
+        } else {
+            this.state.generator = generator;
+        }
+
+        if (!onlineNodeIds.includes(handler)) {
+            await del('handler');
+        } else {
+            this.state.handler = handler;
+        }
+
         this.state.onlineNodes = new Set(onlineNodeIds);
     }
 }
