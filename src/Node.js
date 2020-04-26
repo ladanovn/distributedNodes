@@ -1,4 +1,5 @@
 const uniqid = require('uniqid');
+const logUpdate = require('log-update');
 
 const redisPromisify = require('./helpers/redisPromisify');
 const { difference } = require('./helpers/sets');
@@ -51,6 +52,14 @@ class Node {
             isEnabled: false,
             subscriber: null,
         };
+
+        /**
+         * Used for visualisazion node work
+         */
+        this.analytics = {
+            countSendedMsg: 0,
+            countRecievedMsg: 0
+        };
     }
     
     async start() {
@@ -65,9 +74,6 @@ class Node {
     async _syncLoop() {
         const now = Date.now();
 
-        // FIXME: remove after test
-        console.log(this.id, this.state);
-
         // confirm online status
         await set(`node:${this.id}:timestamp`, now);
 
@@ -75,6 +81,8 @@ class Node {
 
         await this._handleDisconnectNode(disconnectedNodes);
         await this._handleConnectNode();
+
+        this._consoleState();
     }
 
     /**
@@ -84,7 +92,7 @@ class Node {
         if (this.state.generator === this.id) {
             const message = `Message, ${new Date()}`;
             client.publish('message', message);
-            console.log(message)
+            this.analytics.countSendedMsg++;
         }
     }
 
@@ -93,7 +101,7 @@ class Node {
      */
     async _receiveMsg(channel, message) {
         if (this.state.handler === this.id) {
-            console.log(message);
+            this.analytics.countRecievedMsg++;
         } else {
             // Unsubcribe if current node is not handler now 
             if (this.subscription.isEnabled) {
@@ -219,6 +227,22 @@ class Node {
         }
 
         this.state.onlineNodes = new Set(onlineNodeIds);
+    }
+
+    /**
+     * Console current state
+     */
+    async _consoleState() {
+        logUpdate(
+`Current node: ${this.id}
+State:
+    generator: ${this.state.generator},
+    handler: ${this.state.handler},
+    onlineNode (${this.state.onlineNodes.size}): ${[...this.state.onlineNodes]}    
+
+Sended messaged: ${this.analytics.countSendedMsg}
+Recieved messaged: ${this.analytics.countRecievedMsg}
+`       );
     }
 
     /**

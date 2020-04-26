@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^8.2.0",
+    "log-update": "^4.0.0",
     "redis": "^3.0.2",
     "uniqid": "^5.2.0"
   }
