@@ -1,11 +1,13 @@
 const uniqid = require('uniqid');
-const {
-    get,
-    set,
-    keys,
-    del,
-} = require('./helpers/redisPromisify');
+
+const redisPromisify = require('./helpers/redisPromisify');
 const { difference } = require('./helpers/sets');
+const { client } = require('./db/redis');
+
+const get = redisPromisify.get(client);
+const set = redisPromisify.set(client);
+const keys = redisPromisify.keys(client);
+const del = redisPromisify.del(client);
 
 const FREQUENCY_SYNC = 250;
 const FREQUENCY_MESSAGE_PUBLISH = 500;
@@ -40,6 +42,15 @@ class Node {
          * Link to generator loop
          */
         this.publishLoop = null;
+
+        /**
+         * Store dublicated client for subscription
+         * if current node is handler 
+         */
+        this.subscription = {
+            isEnabled: false,
+            subscriber: null,
+        };
     }
     
     async start() {
@@ -71,7 +82,27 @@ class Node {
      */
     async _publishMsg() {
         if (this.state.generator === this.id) {
-            // console.log(this.id, 'publish message');
+            const message = `Message, ${new Date()}`;
+            client.publish('message', message);
+            console.log(message)
+        }
+    }
+
+    /**
+     * Handle message if current node is handler
+     */
+    async _receiveMsg(channel, message) {
+        if (this.state.handler === this.id) {
+            console.log(message);
+        } else {
+            // Unsubcribe if current node is not handler now 
+            if (this.subscription.isEnabled) {
+                this.subscription.subscriber.unsubscribe();
+                this.subscription = {
+                    isEnabled: false,
+                    subscriber: null,
+                }
+            }
         }
     }
 
@@ -234,6 +265,15 @@ class Node {
         await newHandler !== null ?
             set('handler', newHandler) :
             del('handler');
+
+        if (this.id === newHandler) {
+            this.subscription = {
+                isEnabled: true,
+                subscriber: client.duplicate(),
+            }
+            this.subscription.subscriber.on('message', this._receiveMsg.bind(this));
+            this.subscription.subscriber.subscribe('message');
+        }
     }
 }
 
