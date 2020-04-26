@@ -86,8 +86,7 @@ class Node {
                 const orderedNodes = [...this.state.onlineNodes].sort();
                 for (const node of orderedNodes) {
                     if (this.state.generator !== node) {
-                        await set('handler', node);
-                        this.state.handler = node;
+                        await this._setGlobalHandler(node);
                         break;
                     }
                 };
@@ -107,22 +106,15 @@ class Node {
 
             if (orderedNodes.length > 1) {
                 for (const node of orderedNodes) {
-                    if (this.state.handler !== node) 
-                        this.state.generator = node;{
-                        await set('generator', node);
+                    if (this.state.handler !== node) {
+                        await this._setGlobalGenerator(node)
                         break;
                     }
-                };
+                }
 
             } else if (orderedNodes.length === 1) {
-                this.state.generator = orderedNodes[0];
-                this.state.handler = null;
-                await set('generator', orderedNodes[0]);
-                await del('handler');
-
-            } else {
-                await del('generator');
-                await del('handler');
+                await this._setGlobalGenerator(orderedNodes[0]);
+                await this._setGlobalHandler(null);
             }
         }
 
@@ -132,14 +124,12 @@ class Node {
             if (orderedNodes.length > 1) {
                 for (const node of orderedNodes) {
                     if (this.state.generator !== node) {
-                        await set('handler', node);
-                        this.state.handler = node;
+                        await this._setGlobalHandler(node);
                         break;
                     }
                 };
             } else {
-                this.state.handler = null;
-                await del('handler');
+                await this._setGlobalHandler(null);
             }
         }
     }
@@ -179,8 +169,7 @@ class Node {
 
         if (!onlineNodeIds.has(generator)) {
             const orderedNodes = [...onlineNodeIds].sort();
-            this.state.generator = orderedNodes[0];
-            await set('generator', orderedNodes[0]);
+            await this._setGlobalGenerator(orderedNodes[0]);
 
         } else {
             this.state.generator = generator;
@@ -189,12 +178,10 @@ class Node {
         if (!onlineNodeIds.has(handler)) {
             if (onlineNodeIds.size > 1) {
                 const orderedNodes = [...onlineNodeIds].sort();
-                this.state.handler = orderedNodes[1];
-                await set('handler', orderedNodes[1]);
+                await this._setGlobalHandler(orderedNodes[1]);
 
             } else {
-                await del('handler');
-                this.state.handler = null;
+                await this._setGlobalHandler(null);
             }        
         } else {
             this.state.handler = handler;
@@ -225,6 +212,28 @@ class Node {
         }
 
         return onlineNodeIds;
+    }
+
+    /**
+     * Set generator in local and origin states
+     * @param {string|null} newGenerator 
+     */
+    async _setGlobalGenerator(newGenerator) {
+        this.state.generator = newGenerator;
+        await newGenerator !== null ?
+            set('generator', newGenerator ) :
+            del('generator');
+    }
+
+    /**
+     * Set handler in local and origin states
+     * @param {string|null} newHandler 
+     */
+    async _setGlobalHandler(newHandler) {
+        this.state.handler = newHandler;
+        await newHandler !== null ?
+            set('handler', newHandler) :
+            del('handler');
     }
 }
 
