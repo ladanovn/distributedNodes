@@ -9,10 +9,16 @@ const get = redisPromisify.get(client);
 const set = redisPromisify.set(client);
 const keys = redisPromisify.keys(client);
 const del = redisPromisify.del(client);
+const rpush = redisPromisify.rpush(client);
+const llen = redisPromisify.llen(client);
+const lrange = redisPromisify.lrange(client);
 
 const FREQUENCY_SYNC = 250;
 const FREQUENCY_MESSAGE_PUBLISH = 500;
 const ONLINE_STATUS_EXPIRE = FREQUENCY_SYNC * 1.5;
+
+const PERCENT_ERROR_MESSAGE = 5;
+const COUNT_EXPRACTING_MESSAGE_AT_TIME = 1000;
 
 class Node {
 
@@ -69,6 +75,21 @@ class Node {
     }
 
     /**
+     * Extract accumuleted error messages
+     */
+    static async getErrorMessages() {
+        const messageCount = await llen('message:errors');
+        const extractCount = COUNT_EXPRACTING_MESSAGE_AT_TIME;
+
+        for (let i = 0; i < messageCount / extractCount; i++) {
+            const messages = await lrange('message:errors', i * extractCount, (i + 1) * extractCount);
+            messages.forEach(msg => console.log(msg));
+        }
+
+        await del('message:errors');
+    }
+
+    /**
      * Local and remote state synchronization
      */
     async _syncLoop() {
@@ -90,7 +111,7 @@ class Node {
      */
     async _publishMsg() {
         if (this.state.generator === this.id) {
-            const message = `Message, ${new Date()}`;
+            const message = `Example message, length around 90, ${new Date()}`;
             client.publish('message', message);
             this.analytics.countSendedMsg++;
         }
@@ -102,6 +123,11 @@ class Node {
     async _receiveMsg(channel, message) {
         if (this.state.handler === this.id) {
             this.analytics.countRecievedMsg++;
+
+            // Save error message
+            if (Math.random() <= PERCENT_ERROR_MESSAGE / 100) {
+                rpush('message:errors', message);
+            }
         } else {
             // Unsubcribe if current node is not handler now 
             if (this.subscription.isEnabled) {
