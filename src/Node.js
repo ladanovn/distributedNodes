@@ -13,12 +13,13 @@ const rpush = redisPromisify.rpush(client);
 const llen = redisPromisify.llen(client);
 const lrange = redisPromisify.lrange(client);
 
-const FREQUENCY_SYNC = 250;
-const FREQUENCY_MESSAGE_PUBLISH = 500;
-const ONLINE_STATUS_EXPIRE = FREQUENCY_SYNC * 1.5;
-
-const PERCENT_ERROR_MESSAGE = 5;
-const COUNT_EXPRACTING_MESSAGE_AT_TIME = 1000;
+const {
+    FREQUENCY_SYNC,
+    FREQUENCY_MESSAGE_PUBLISH,
+    ONLINE_STATUS_EXPIRE,
+    PERCENT_ERROR_MESSAGE,
+    COUNT_EXPRACTING_MESSAGE_AT_TIME
+} = process.env;
 
 class Node {
 
@@ -154,7 +155,7 @@ class Node {
                         await this._setGlobalHandler(node);
                         break;
                     }
-                };
+                }
             }
         }
     }
@@ -192,7 +193,7 @@ class Node {
                         await this._setGlobalHandler(node);
                         break;
                     }
-                };
+                }
             } else {
                 await this._setGlobalHandler(null);
             }

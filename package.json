@@ -4,12 +4,20 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node ./src/index.js",
+    "getErrors": "node ./src/index.js getErrors",
+    "lint": "eslint ./src --cache && echo \"eslint: no lint errors\"",
+    "lint:fix": "eslint ./src --fix && echo \"eslint: no lint errors\""
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@babel/core": "^7.9.0",
+    "@babel/node": "^7.8.7",
+    "@babel/preset-env": "^7.9.5",
+    "babel-eslint": "^10.1.0",
     "dotenv": "^8.2.0",
+    "eslint": "^6.8.0",
     "log-update": "^4.0.0",
     "redis": "^3.0.2",
     "uniqid": "^5.2.0"
