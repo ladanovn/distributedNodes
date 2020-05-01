@@ -45,7 +45,7 @@ class Node {
          * Link to synchronization loop
          */
         this.syncLoop = null;
-        
+
         /**
          * Link to generator loop
          */
@@ -68,7 +68,7 @@ class Node {
             countRecievedMsg: 0
         };
     }
-    
+
     async start() {
         await this._initState();
         this.syncLoop = setInterval(this._syncLoop.bind(this), FREQUENCY_SYNC);
@@ -147,19 +147,25 @@ class Node {
      * if it still doesn't exist
      */
     async _handleConnectNode() {
-        if (this.state.onlineNodes.size > 1) {  
+        if (this.state.onlineNodes.size > 1) {
             if (!this.state.handler) {
-                const orderedNodes = [...this.state.onlineNodes].sort();
-                for (const node of orderedNodes) {
-                    if (this.state.generator !== node) {
-                        await this._setGlobalHandler(node);
-                        break;
+                const handler = await get('handler');
+                if (handler) {
+                    await this._setGlobalHandler(handler);
+
+                } else {
+                    const orderedNodes = [...this.state.onlineNodes].sort();
+                    for (const node of orderedNodes) {
+                        if (this.state.generator !== node) {
+                            await this._setGlobalHandler(node);
+                            break;
+                        }
                     }
                 }
             }
         }
     }
-    
+
     /**
      * If the disconnectedNodes includes generator or
      * handler, then necessary reselect them 
@@ -204,6 +210,8 @@ class Node {
      * Synchronizes previous and new state of nodes
      */
     async _syncOnlineNodeState() {
+        const handler = await get('handler');
+        const generator = await get('generator');
         const onlineNodeIds = await this._getOnlineNodeIds();
 
         const connectedNodes = difference(onlineNodeIds, this.state.onlineNodes);
@@ -215,6 +223,14 @@ class Node {
         disconnectedNodes.forEach(node => {
             this.state.onlineNodes.delete(node);
         });
+
+        if (handler && this.state.handler !== handler) {
+            this._setGlobalHandler(handler);
+        }
+
+        if (generator && this.state.generator !== generator) {
+            this._setGlobalGenerator(generator);
+        }
 
         return {
             connectedNodes,
@@ -248,8 +264,12 @@ class Node {
 
             } else {
                 await this._setGlobalHandler(null);
-            }        
+            }
+
         } else {
+            if (this.id === handler) {
+                this._subscribeToMessages();
+            }
             this.state.handler = handler;
         }
 
@@ -303,7 +323,7 @@ Recieved messaged: ${this.analytics.countRecievedMsg}
     async _setGlobalGenerator(newGenerator) {
         this.state.generator = newGenerator;
         await newGenerator !== null ?
-            set('generator', newGenerator ) :
+            set('generator', newGenerator) :
             del('generator');
     }
 
@@ -318,13 +338,21 @@ Recieved messaged: ${this.analytics.countRecievedMsg}
             del('handler');
 
         if (this.id === newHandler) {
-            this.subscription = {
-                isEnabled: true,
-                subscriber: client.duplicate(),
-            }
-            this.subscription.subscriber.on('message', this._receiveMsg.bind(this));
-            this.subscription.subscriber.subscribe('message');
+            this._subscribeToMessages();
         }
+    }
+
+    /**
+     * To subscribe to messages for 
+     * for futher processing
+     */
+    _subscribeToMessages() {
+        this.subscription = {
+            isEnabled: true,
+            subscriber: client.duplicate(),
+        }
+        this.subscription.subscriber.on('message', this._receiveMsg.bind(this));
+        this.subscription.subscriber.subscribe('message');
     }
 }
 
